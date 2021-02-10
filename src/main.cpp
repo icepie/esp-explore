@@ -1,10 +1,17 @@
 // dep lib
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
 // customized headers
 #include "config.h"
 
+#include <Crypto.h>
+#include <SHA256.h>
+
+#define HASH_SIZE 32
+
+WiFiClient client;
 HTTPClient http; //Declare an object of class HTTPClient
 
 /*
@@ -64,29 +71,73 @@ void smartConfig()
   }
 }
 
-void litLogin()
+char *btoh(char *dest, uint8_t *src, int len)
 {
+  char *d = dest;
+  while (len--)
+    sprintf(d, "%02x", (unsigned char)*src++), d += 2;
+  return dest;
+}
+
+char *crypto_password(char *str)
+{
+  char hex[256];
+  char *msg = str;
+
+  uint8_t result[HASH_SIZE];
+  SHA256 sha256Hash;
+
+  sha256Hash.reset();
+  sha256Hash.update(msg, strlen(msg));
+  sha256Hash.finalize(result, HASH_SIZE);
+
+  return btoh(hex, result, HASH_SIZE);
+}
+
+
+StaticJsonDocument<200> login_data;
+
+String litLogin(char *user, char *psw)
+{
+  char buffer[256];
+
+  login_data["cardNo"] = user;
+  login_data["password"] = crypto_password(psw);
+
+  serializeJson(login_data, buffer);
 
   http.begin(CONFIG_LIT_ENDPOINT_LOGIN); //Specify request destination
   http.addHeader("Content-Type", "application/json");
-  int httpCode = http.POST("{\"cardNo\":\"tPmAT5Ab3j7F9\",\"password\":\"49.54\"}");                                 //Send the request
+  int httpCode = http.POST(buffer); //Send the request
 
   if (httpCode > 0)
   { //Check the returning code
 
     String payload = http.getString(); //Get the request response payload
-    Serial.println(payload);           //Print the response payload
+    Serial.println(payload);        //Print the response payload
+
+    DynamicJsonDocument doc(2048);
+    deserializeJson(doc, payload);
+
+    if (doc["code"].as<int>() == 200);
+    {
+      return doc["data"]["token"];
+    }
+
   }
 
   http.end(); //Close connection
+
+  return String();  
+
 }
+
 
 void setup()
 {
   Serial.begin(115200);
-  while (!Serial);
-
-  randomSeed(analogRead(0));
+  while (!Serial)
+    ;
 
   // wifi config
   if (!autoConfig())
@@ -95,11 +146,19 @@ void setup()
     smartConfig();
   }
 
+  // 
+
   // try to login
-  litLogin();
+  String token = litLogin("USER", "PWD");
+  // check status
+  if (token.isEmpty())
+    Serial.println("OK");
+  else
+    Serial.println("ERR");
+
 }
 
 void loop()
 {
-
+  delay(0);
 }
