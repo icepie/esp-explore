@@ -94,19 +94,18 @@ char *crypto_password(char *str)
   return btoh(hex, result, HASH_SIZE);
 }
 
-
-StaticJsonDocument<200> login_data;
+StaticJsonDocument<200> loginData;
 
 String litLogin(char *user, char *psw)
 {
   char buffer[256];
 
-  login_data["cardNo"] = user;
-  login_data["password"] = crypto_password(psw);
+  loginData["cardNo"] = user;
+  loginData["password"] = crypto_password(psw);
 
-  serializeJson(login_data, buffer);
+  serializeJson(loginData, buffer);
 
-  http.begin(CONFIG_LIT_ENDPOINT_LOGIN); //Specify request destination
+  http.begin(client, CONFIG_LIT_ENDPOINT_LOGIN); //Specify request destination
   http.addHeader("Content-Type", "application/json");
   int httpCode = http.POST(buffer); //Send the request
 
@@ -114,24 +113,21 @@ String litLogin(char *user, char *psw)
   { //Check the returning code
 
     String payload = http.getString(); //Get the request response payload
-    Serial.println(payload);        //Print the response payload
+    Serial.println(payload);           //Print the response payload
 
     DynamicJsonDocument doc(2048);
     deserializeJson(doc, payload);
 
-    if (doc["code"].as<int>() == 200);
+    if (doc["code"].as<int>() == 200)
     {
       return doc["data"]["token"];
     }
-
   }
 
   http.end(); //Close connection
 
-  return String();  
-
+  return String();
 }
-
 
 void setup()
 {
@@ -146,16 +142,17 @@ void setup()
     smartConfig();
   }
 
-  // 
+  //
+  char litUser[] = "USER";
+  char litPWD[] = "PWD";
 
   // try to login
-  String token = litLogin("USER", "PWD");
+  String token = litLogin(litUser, litPWD);
   // check status
   if (token.isEmpty())
-    Serial.println("OK");
-  else
     Serial.println("ERR");
-
+  else
+    Serial.println("OK");
 }
 
 void loop()
