@@ -94,10 +94,10 @@ char *crypto_password(char *str)
   return btoh(hex, result, HASH_SIZE);
 }
 
-StaticJsonDocument<200> loginData;
 
 String litLogin(char *user, char *psw)
 {
+  StaticJsonDocument<200> loginData;
   char buffer[256];
 
   loginData["cardNo"] = user;
