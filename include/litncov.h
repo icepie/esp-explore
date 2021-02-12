@@ -1,3 +1,6 @@
+// 
+#define CONFIG_GET_TIME_URL "http://quan.suning.com/getSysTime.do"
+
 // LIT(Luoyang Institute of Science and Technology) Health Platform
 #define CONFIG_LIT_ENDPOINT_LOGIN "http://hmgr.sec.lit.edu.cn/wms/healthyLogin"
 #define CONFIG_LIT_ENDPOINT_LASTRECORD "http://hmgr.sec.lit.edu.cn/wms/lastHealthyRecord"

@@ -104,31 +104,6 @@ char *crypto_password(char *str)
   return btoh(hex, result, HASH_SIZE);
 }
 
-String nowDateTime()
-{
-  String now;
-
-  for (size_t i = 0; now.isEmpty() && i < 3; i++)
-  {
-    http.begin(client, "http://quan.suning.com/getSysTime.do");
-    http.addHeader("Content-Type", "application/json");
-    int httpCode = http.GET();
-    String payload = http.getString();
-
-    http.end(); //Close connection
-
-    if (httpCode > 0)
-    {
-      DynamicJsonDocument doc(2048);
-      deserializeJson(doc, payload);
-
-      now = doc["sysTime2"].as<char *>();
-    }
-  }
-
-  return now;
-}
-
 /*
  *  litFirstRecord function
  *  
@@ -149,6 +124,26 @@ String nowDateTime()
 int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temperatureTwo = 0.00, float temperatureThree = 0.00)
 {
 
+  http.begin(client, CONFIG_GET_TIME_URL);
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.GET();
+  String payload = http.getString();
+
+  String now;
+
+  if (httpCode > 0)
+  {
+    DynamicJsonDocument doc(2048);
+    deserializeJson(doc, payload);
+
+    now = doc["sysTime2"].as<String>().substring(0,10);
+  }
+
+  if (now.isEmpty())
+  {
+    return 4;
+  }
+
   char buffer[256];
   StaticJsonDocument<200> loginData;
 
@@ -156,16 +151,14 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
   loginData["password"] = crypto_password(psw);
 
   serializeJson(loginData, buffer);
-
-  http.begin(client, CONFIG_LIT_ENDPOINT_LOGIN); //Specify request destination
+  
+  http.setURL(CONFIG_LIT_ENDPOINT_LOGIN);
   http.addHeader("Content-Type", "application/json");
 
-  int httpCode = http.POST(buffer);  //Send the request to login
-  String payload = http.getString(); //Get the request response payload
+  httpCode = http.POST(buffer);  //Send the request to login
+  payload = http.getString(); //Get the request response payload
 
   Serial.println(payload); //Print the response payload
-
-  http.end(); //Close connection
 
   // connect error
   if (httpCode <= 0)
@@ -192,7 +185,7 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
   eurl += "&userId=";
   eurl += loginRte["data"]["userId"].as<String>();
 
-  http.begin(client, eurl);
+  http.setURL(eurl);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("token", token);
 
@@ -211,8 +204,6 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
 
   Serial.println(payload);
 
-  http.end();
-
   // if get info fail
   if (lastRecordRte["code"].as<int>() != 200)
   {
@@ -226,18 +217,12 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
   // most info from lastRecordRte
   deserializeJson(recordData, lastRecordRte["data"].as<String>());
 
-  String now = nowDateTime();
-  if (now.isEmpty())
-  {
-    return 4;
-  }
-
   if (now == lastRecordRte["data"]["reportDate"].as<String>())
   {
     return 5;
   }
 
-  recordData["reportDate"] = now.substring(0, 10);
+  recordData["reportDate"] = now;
 
   recordData["mobile"] = loginRte["data"]["mobile"];
   recordData["nativePlaceProvince"] = loginRte["data"]["nativePlaceProvince"];
@@ -270,13 +255,12 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
 
   Serial.println(bigBuffer);
 
-  http.begin(client, CONFIG_LIT_ENDPOINT_ADDRECORD); //Specify request destination
+  http.setURL(CONFIG_LIT_ENDPOINT_ADDRECORD);
   http.addHeader("Content-Type", "application/json;charset=UTF-8");
   http.addHeader("token", token);
-  http.addHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36");
-
-  httpCode = http.POST(bigBuffer); //Send the request to login
-  payload = http.getString();       //Get the request response payload
+  
+  httpCode = http.POST(bigBuffer);
+  payload = http.getString();
 
   if (httpCode <= 0)
   { //Check the returning code
@@ -288,13 +272,13 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
 
   Serial.println(payload);
 
-  http.end();
-
   // if report info fail
   if (firstRecordRte["code"].as<int>() != 200)
   {
     return 2;
   }
+
+  // http.end();
 
   return 0;
 }
@@ -314,11 +298,12 @@ void setup()
 
   //
   char litUser[] = "";
-  char litPWD[] = "";
+  char litPWD[] = "]";
 
   int r = litFirstRecord(litUser, litPWD);
   Serial.println(r);
   // Serial.println(timeClient.getDay());
+
 }
 
 void loop()
