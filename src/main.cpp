@@ -106,29 +106,51 @@ char *crypto_password(char *str)
 
 String nowDateTime()
 {
-  http.begin(client, "http://quan.suning.com/getSysTime.do");
-  int httpCode = http.GET();
-
   String now;
 
-  if (httpCode > 0)
+  for (size_t i = 0; now.isEmpty() && i < 3; i++)
   {
-    DynamicJsonDocument doc(2048);
-    deserializeJson(doc, http.getString());
+    http.begin(client, "http://quan.suning.com/getSysTime.do");
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.GET();
+    String payload = http.getString();
 
-    now = doc["sysTime2"].as<char *>();
+    http.end(); //Close connection
+
+    if (httpCode > 0)
+    {
+      DynamicJsonDocument doc(2048);
+      deserializeJson(doc, payload);
+
+      now = doc["sysTime2"].as<char *>();
+    }
   }
-
-  http.end(); //Close connection
 
   return now;
 }
 
-litUserInfo litLogin(char *user, char *psw)
+/*
+ *  litFirstRecord function
+ *  
+ *  Param float, float, float
+ *  temperature -> default is last
+ *  temperatureTwo -> default is last
+ *  temperatureThree -> default is last
+ * 
+ *  Return int
+ *  0 -> work fine
+ *  -1 -> connect error
+ *  1 -> login error
+ *  2 -> fail to get the last record info
+ *  3 -> report error
+ *  4 -> get the date time error
+ *  5 -> today is reported
+ */
+int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temperatureTwo = 0.00, float temperatureThree = 0.00)
 {
-  litUserInfo rte;
-  StaticJsonDocument<200> loginData;
+
   char buffer[256];
+  StaticJsonDocument<200> loginData;
 
   loginData["cardNo"] = user;
   loginData["password"] = crypto_password(psw);
@@ -137,317 +159,144 @@ litUserInfo litLogin(char *user, char *psw)
 
   http.begin(client, CONFIG_LIT_ENDPOINT_LOGIN); //Specify request destination
   http.addHeader("Content-Type", "application/json");
-  int httpCode = http.POST(buffer); //Send the request
 
-  if (httpCode > 0)
-  { //Check the returning code
+  int httpCode = http.POST(buffer);  //Send the request to login
+  String payload = http.getString(); //Get the request response payload
 
-    String payload = http.getString(); //Get the request response payload
-    Serial.println(payload);           //Print the response payload
-
-    DynamicJsonDocument doc(2048);
-    deserializeJson(doc, payload);
-
-    Serial.println(doc["code"].as<int>());
-
-    if (doc["code"].as<int>() == 200)
-    {
-
-      
-      rte.userId = doc["data"]["userId"].as<int>();
-      rte.cardNo = doc["data"]["cardNo"].as<char *>();
-      rte.name = doc["data"]["name"].as<char *>();
-      rte.teamId = doc["data"]["teamId"].as<int>();
-      rte.token = doc["data"]["token"].as<char *>();
-      rte.expireTime = doc["data"]["expireTime"].as<char *>();
-      rte.lastUpdateTime = doc["data"]["lastUpdateTime"].as<char *>();
-      rte.sex = doc["data"]["sex"].as<int>();
-      rte.age = doc["data"]["age"].as<int>();
-      rte.nativePlaceProvince = doc["data"]["nativePlaceProvince"].as<char *>();
-      rte.nativePlaceCity = doc["data"]["nativePlaceCity"].as<char *>();
-      rte.nativePlaceDistrict = doc["data"]["nativePlaceDistrict"].as<char *>();
-      rte.nativePlaceAddress = doc["data"]["nativePlaceAddress"].as<char *>();
-      rte.teamName = doc["data"]["teamName"].as<char *>();
-      rte.teamProvince = doc["data"]["teamProvince"].as<char *>();
-      rte.teamCity = doc["data"]["teamCity"].as<char *>();
-      rte.mobile = doc["data"]["mobile"].as<char *>();
-      rte.organizationName = doc["data"]["organizationName"].as<char *>();
-      rte.identity = doc["data"]["identity"].as<int>();
-      rte.isAdmin = doc["data"]["isAdmin"].as<int>();
-      rte.logoUrl = doc["data"]["logoUrl"].as<char *>();
-      rte.isTwoTemperature = doc["data"]["isTwoTemperature"].as<int>();
-      rte.isApprover = doc["data"]["isApprover"].as<char *>();
-      rte.isGeneralAdmin = doc["data"]["isGeneralAdmin"].as<int>();
-      rte.isReportAdmin = doc["data"]["isReportAdmin"].as<int>();
-      rte.teamNo = doc["data"]["teamNo"].as<char *>();
-      rte.localAddress = doc["data"]["localAddress"].as<char *>();
-      rte.userOrganizationId = doc["data"]["userOrganizationId"].as<int>();
-      rte.isReturnSchoolApprover = doc["data"]["isReturnSchoolApprover"].as<int>();
-    }
-  }
-
-  Serial.println(rte.token);
+  Serial.println(payload); //Print the response payload
 
   http.end(); //Close connection
 
-  return rte;
-}
+  // connect error
+  if (httpCode <= 0)
+  {
+    return -1;
+  }
 
-litLastRecordInfo litLastRecord(litUserInfo lui)
-{
-  litLastRecordInfo rte;
+  // login return
+  DynamicJsonDocument loginRte(2048);
+  deserializeJson(loginRte, payload);
+
+  // if login fail
+  if (loginRte["code"].as<int>() != 200)
+  {
+    return 1;
+  }
+
+  String token = loginRte["data"]["token"].as<String>();
+
+  // Create the urk for get last record info
   String eurl = CONFIG_LIT_ENDPOINT_LASTRECORD;
   eurl += "?teamId=";
-  eurl += lui.teamId;
+  eurl += loginRte["data"]["teamId"].as<String>();
   eurl += "&userId=";
-  eurl += lui.userId;
+  eurl += loginRte["data"]["userId"].as<String>();
 
   http.begin(client, eurl);
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("token", lui.token);
+  http.addHeader("token", token);
 
-  Serial.println(lui.token);
+  httpCode = http.GET();
+  payload = http.getString();
 
-  int httpCode = http.GET();
+  Serial.println(payload);
 
-  if (httpCode > 0)
+  if (httpCode <= 0)
   { //Check the returning code
-
-    String payload = http.getString(); //Get the request response payload
-    Serial.println(payload);           //Print the response payload
-
-    DynamicJsonDocument doc(2048);
-    deserializeJson(doc, payload);
-
-    if (doc["code"].as<int>() == 200)
-    {
-      rte.id = doc["data"]["id"].as<int>();
-      rte.userId = doc["data"]["userId"].as<int>();
-      rte.teamId = doc["data"]["teamId"].as<int>();
-      rte.createTime = doc["data"]["createTime"].as<char *>();
-      rte.currentProvince = doc["data"]["currentProvince"].as<char *>();
-      rte.currentProvince = doc["data"]["currentCity"].as<char *>();
-      rte.currentDistrict = doc["data"]["currentDistrict"].as<char *>();
-      rte.currentAddress = doc["data"]["currentAddress"].as<char *>();
-      rte.isInTeamCity = doc["data"]["isInTeamCity"].as<int>();
-      rte.healthyStatus = doc["data"]["healthyStatus"].as<int>();
-      rte.temperatureNormal = doc["data"]["temperatureNormal"].as<int>();
-      rte.temperature = doc["data"]["temperature"].as<float>();
-      rte.temperatureTwo = doc["data"]["temperatureTwo"].as<float>();
-      rte.temperatureThree = doc["data"]["temperatureThree"].as<float>();
-      rte.selfHealthy = doc["data"]["selfHealthy"].as<int>();
-      rte.selfHealthyInfo = doc["data"]["selfHealthyInfo"].as<char *>();
-      rte.selfHealthyTime = doc["data"]["selfHealthyTime"].as<char *>();
-      rte.friendHealthy = doc["data"]["friendHealthy"].as<int>();
-      rte.travelPatient = doc["data"]["travelPatient"].as<char *>();
-      rte.contactPatient = doc["data"]["contactPatient"].as<char *>();
-      rte.isolation = doc["data"]["isolation"].as<int>();
-      rte.seekMedical = doc["data"]["seekMedical"].as<int>();
-      rte.seekMedicalInfo = doc["data"]["seekMedicalInfo"].as<char *>();
-      rte.exceptionalCase = doc["data"]["exceptionalCase"].as<int>();
-      rte.exceptionalCaseInfo = doc["data"]["exceptionalCaseInfo"].as<char *>();
-      rte.reportDate = doc["data"]["reportDate"].as<char *>();
-      rte.currentStatus = doc["data"]["currentStatus"].as<char *>();
-      rte.isolation = doc["data"]["villageIsCase"].as<int>();
-      rte.reportDate = doc["data"]["caseAddress"].as<char *>();
-      rte.peerIsCase = doc["data"]["peerIsCase"].as<int>();
-      rte.peerAddress = doc["data"]["peerAddress"].as<char *>();
-      rte.goHuBeiCity = doc["data"]["goHuBeiCity"].as<char *>();
-      rte.goHuBeiTime = doc["data"]["goHuBeiTime"].as<char *>();
-      rte.contactProvince = doc["data"]["contactProvince"].as<char *>();
-      rte.contactCity = doc["data"]["contactCity"].as<char *>();
-      rte.contactDistrict = doc["data"]["contactDistrict"].as<char *>();
-      rte.contactAddress = doc["data"]["contactAddress"].as<char *>();
-      rte.contactTime = doc["data"]["contactTime"].as<char *>();
-      rte.diagnosisTime = doc["data"]["diagnosisTime"].as<char *>();
-      rte.treatmentHospitalAddress = doc["data"]["treatmentHospitalAddress"].as<char *>();
-      rte.cureTime = doc["data"]["cureTime"].as<char *>();
-      rte.abroadInfo = doc["data"]["abroadInfo"].as<char *>();
-      rte.isAbroad = doc["data"]["isAbroad"].as<int>();
-    }
+    return -1;
   }
+
+  DynamicJsonDocument lastRecordRte(2048);
+  deserializeJson(lastRecordRte, payload);
+
+  Serial.println(payload);
 
   http.end();
 
-  return rte;
-}
+  // if get info fail
+  if (lastRecordRte["code"].as<int>() != 200)
+  {
+    return 2;
+  }
 
-bool litFisrtRecord(char *user, char *psw, float temperature = 36.6, float temperatureTwo = 0.00, float temperatureThree = 0.00)
-{
-  // try to login
-  litUserInfo lui = litLogin(user, psw);
-  // check status
+  char bigBuffer[1500];
 
+  DynamicJsonDocument recordData(2048);
 
-  litLastRecordInfo llr = litLastRecord(lui);
+  // most info from lastRecordRte
+  deserializeJson(recordData, lastRecordRte["data"].as<String>());
 
-  // Serial.println(llr.temperatureTwo);
+  String now = nowDateTime();
+  if (now.isEmpty())
+  {
+    return 4;
+  }
 
-  char buffer[256];
+  if (now == lastRecordRte["data"]["reportDate"].as<String>())
+  {
+    return 5;
+  }
 
-  StaticJsonDocument<200> recordData;
+  recordData["reportDate"] = now.substring(0, 10);
 
-  /* From: http//:<host>/web/#/healthForm Date: 2021-02-11 17:45:00
-  mobile: '',
-  age:'',
-  sex:'',
-  nativePlaceProvince:'',
-  nativePlaceCity:'',
-  nativePlaceDistrict:'',
-  nativePlaceAddress:'',
-  localAddress:'',
+  recordData["mobile"] = loginRte["data"]["mobile"];
+  recordData["nativePlaceProvince"] = loginRte["data"]["nativePlaceProvince"];
+  recordData["nativePlaceCity"] = loginRte["data"]["nativePlaceCity"];
+  recordData["nativePlaceDistrict"] = loginRte["data"]["nativePlaceDistrict"];
+  recordData["nativePlaceAddress"] = loginRte["data"]["nativePlaceAddress"];
+  recordData["localAddress"] = loginRte["data"]["localAddress"];
 
-  currentProvince: '',//目前所在地省
-  currentCity: '',//目前所在地市
-  currentDistrict:null,//目前所在地区
-  currentLocation: '',//目前所在地
-  //
-    requestFlag === 1，今日已提交,较昨日无变化回显时，获取最新数据
-    if(res.data.currentDistrict){
-    this.formData.currentLocation=areaJson.province_list[res.data.currentProvince]+'-'+areaJson.city_list[res.data.currentCity]+'-'+areaJson.county_list[res.data.currentDistrict];
-    }else{
-    this.formData.currentLocation=areaJson.province_list[res.data.currentProvince]+'-'+areaJson.city_list[res.data.currentCity];
-    //回显信息是否是海外
-    this.isSelectOverseas=(res.data.currentProvince==='900000');
-  //
-  currentAddress: '',//目前所在地详细地址
+  recordData["userId"] = loginRte["data"]["userId"];
+  recordData["teamId"] = loginRte["data"]["teamId"];
 
-  villageIsCase:'0',//所在小区或者村是否有确诊病例
-  caseAddress:'',//病例地址
-  peerIsCase:'0',//同住人是否有确诊病例
-  peerAddress:'',//共同居主人地址
+  recordData["isTrip"] = lastRecordRte["data"]["isAbroad"];
 
-  isInTeamCity: '',
-  temperatureNormal: '0',
-  temperature: '',
-  selfHealthy: '0',
-  selfHealthyInfo:'',
-  selfHealthyTime:null,
-  friendHealthy: '0',
-  isolation: '0',
+  if (temperature != 0.00)
+  {
+    recordData["temperature"] = temperature;
+  }
 
-  currentStatus:'1000705',//当前所属状态
-  diagnosisTime:null,//选择已治愈时确诊时间
-  treatmentHospitalAddress:'',//选择已治愈时治疗医院地址
-  cureTime:null,//选择已治愈时治愈时间
+  if (temperatureTwo != 0.00)
+  {
+    recordData["temperatureTwo"] = temperatureTwo;
+  }
 
-  travelPatient:'1000803',//疫情旅行史
-  goHuBeiCity:'',//去过的湖北城市
-  goHuBeiTime:null,//去湖北城市时间
+  if (temperatureThree != 0.00)
+  {
+    recordData["temperatureThree"] = temperatureThree;
+  }
 
-  contactPatient: '1000904',//接触情况
-  contactTime:null,//接触时间
-  contactProvince: '',//接触地点省
-  contactCity: '',//接触地点市
-  contactDistrict:'',//接触地点区
-  contactLocation:'',//接触地点所在地
-  contactAddress:'',//接触地点所在地详细地址
+  serializeJson(recordData, bigBuffer);
 
-  isAbroad:'',//是否去过国外
-  abroadInfo:'',//去过的国外地区详细信息
-
-  seekMedical: '0',
-  seekMedicalInfo: '',
-  exceptionalCase: '0',
-  exceptionalCaseInfo: '',
-  isTrip: '0',
-  */
-
-  recordData["mobile"] = lui.mobile;
-  recordData["nativePlaceProvince"] = lui.nativePlaceProvince;
-  recordData["nativePlaceCity"] = lui.nativePlaceCity;
-  recordData["nativePlaceDistrict"] = lui.nativePlaceDistrict;
-  recordData["nativePlaceAddress"] = lui.nativePlaceAddress;
-  recordData["localAddress"] = lui.localAddress;
-
-  recordData["currentProvince"] = llr.currentProvince;
-  recordData["currentCity"] = llr.currentCity;
-  recordData["currentDistrict"] = llr.currentDistrict;
-  recordData["currentLocation"] = ""; // unnecessary
-  recordData["currentAddress"] = llr.currentAddress;
-
-  recordData["currentAddress"] = llr.villageIsCase;
-  recordData["caseAddress"] = llr.caseAddress;
-  recordData["peerIsCase"] = llr.peerIsCase;
-  recordData["peerAddress"] = llr.peerAddress;
- 
-  recordData["isInTeamCity"] = llr.isInTeamCity;
-
-  recordData["temperatureNormal"] = llr.temperatureNormal;
-  recordData["temperature"] = temperature;
-  recordData["selfHealthy"] = llr.selfHealthy;
-  recordData["selfHealthyInfo"] = llr.selfHealthyInfo;
-  recordData["selfHealthyTime"] = llr.selfHealthyTime;
-  recordData["friendHealthy"] = llr.friendHealthy;
-  recordData["isolation"] = llr.isolation;
-
-  recordData["currentStatus"] = llr.currentStatus;
-  recordData["diagnosisTime"] = llr.diagnosisTime;
-  recordData["treatmentHospitalAddress"] = llr.treatmentHospitalAddress;
-  recordData["cureTime"] = llr.cureTime;
-
-  recordData["travelPatient"] = llr.travelPatient;
-  recordData["goHuBeiCity"] = llr.goHuBeiCity;
-  recordData["goHuBeiTime"] = llr.goHuBeiTime;
-
-  recordData["contactPatient"] = llr.contactPatient;
-  recordData["contactTime"] = llr.contactTime;
-  recordData["contactProvince"] = llr.contactProvince;
-  recordData["contactCity"] = llr.contactCity;
-  recordData["contactDistrict"] = llr.contactDistrict;
-  recordData["contactLocation"] = ""; // unnecessary
-  recordData["contactAddress"] = llr.contactAddress;
-
-  recordData["isAbroad"] = llr.isAbroad;
-  recordData["abroadInfo"] = llr.abroadInfo;
-
-  recordData["seekMedical"] = llr.seekMedical;
-  recordData["seekMedicalInfo"] = llr.seekMedicalInfo;
-  recordData["exceptionalCase"] = llr.exceptionalCase;
-  recordData["exceptionalCaseInfo"] = llr.exceptionalCaseInfo;
-  recordData["isTrip"] = llr.isAbroad;
-
-  recordData["userId"] = lui.userId;
-  recordData["teamId"] = lui.teamId;
-  recordData["healthyStatus"] = llr.healthyStatus;
-
-  recordData["temperatureTwo"] = temperatureTwo;
-  recordData["temperatureThree"] = temperatureThree;
-
-  // String now = nowDateTime();
-  // Serial.println(now);
-  // // if (now.isEmpty())
-  // // {
-  // //   return false;
-  // // }
-
-  // recordData["reportDate"] = now;
-
-  serializeJson(recordData, buffer);
+  Serial.println(bigBuffer);
 
   http.begin(client, CONFIG_LIT_ENDPOINT_ADDRECORD); //Specify request destination
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("token", lui.token);  
+  http.addHeader("Content-Type", "application/json;charset=UTF-8");
+  http.addHeader("token", token);
+  http.addHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36");
 
-  int httpCode = http.POST(buffer); //Send the request
+  httpCode = http.POST(bigBuffer); //Send the request to login
+  payload = http.getString();       //Get the request response payload
 
-  Serial.println("准备上报");
-
-  if (httpCode > 0)
+  if (httpCode <= 0)
   { //Check the returning code
-
-    String payload = http.getString(); //Get the request response payload
-    Serial.println(payload);
-
-    Serial.println("成功");
-
+    return -1;
   }
 
-  Serial.println("结束");
+  DynamicJsonDocument firstRecordRte(2048);
+  deserializeJson(firstRecordRte, payload);
+
+  Serial.println(payload);
 
   http.end();
 
+  // if report info fail
+  if (firstRecordRte["code"].as<int>() != 200)
+  {
+    return 2;
+  }
 
+  return 0;
 }
 
 void setup()
@@ -467,7 +316,8 @@ void setup()
   char litUser[] = "";
   char litPWD[] = "";
 
-  litFisrtRecord(litUser, litPWD);
+  int r = litFirstRecord(litUser, litPWD);
+  Serial.println(r);
   // Serial.println(timeClient.getDay());
 }
 

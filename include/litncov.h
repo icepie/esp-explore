@@ -3,84 +3,68 @@
 #define CONFIG_LIT_ENDPOINT_LASTRECORD "http://hmgr.sec.lit.edu.cn/wms/lastHealthyRecord"
 #define CONFIG_LIT_ENDPOINT_ADDRECORD "http://hmgr.sec.lit.edu.cn/wms/addHealthyRecord"
 
-// User base info
-struct litUserInfo
-{
-    int userId;
-    const char *cardNo;
-    const char *name;
-    int teamId;
-    const char *token = NULL;
-    const char *expireTime;
-    const char *lastUpdateTime;
-    int sex;
-    int age;
-    const char *nativePlaceProvince;
-    const char *nativePlaceCity;
-    const char *nativePlaceDistrict;
-    const char *nativePlaceAddress;
-    const char *teamName;
-    const char *teamProvince;
-    const char *teamCity;
-    const char *mobile;
-    const char *organizationName;
-    int identity;
-    int isAdmin;
-    const char *logoUrl;
-    int isTwoTemperature;
-    const char *isApprover;
-    int isGeneralAdmin;
-    int isReportAdmin;
-    const char *teamNo;
-    const char *localAddress;
-    int userOrganizationId;
-    int isReturnSchoolApprover;
-};
+/* From: http//:<host>/web/#/healthForm Date: 2021-02-11 17:45:00
+  mobile: '',
+  age:'',
+  sex:'',
+  nativePlaceProvince:'',
+  nativePlaceCity:'',
+  nativePlaceDistrict:'',
+  nativePlaceAddress:'',
+  localAddress:'',
 
-// the last record info
-struct litLastRecordInfo
-{
-    int id;
-    int userId;
-    int teamId;
-    const char *createTime;
-    const char *currentProvince;
-    const char *currentCity;
-    const char *currentDistrict;
-    const char *currentAddress;
-    int isInTeamCity;
-    int healthyStatus;
-    int temperatureNormal;
-    float temperature;
-    float temperatureTwo;
-    float temperatureThree;
-    int selfHealthy;
-    const char *selfHealthyInfo;
-    const char *selfHealthyTime;
-    int friendHealthy;
-    const char *travelPatient;
-    const char *contactPatient;
-    int isolation;
-    int seekMedical;
-    const char *seekMedicalInfo;
-    int exceptionalCase;
-    const char *exceptionalCaseInfo;
-    const char *reportDate;
-    const char *currentStatus;
-    int villageIsCase;
-    const char *caseAddress;
-    int peerIsCase;
-    const char *peerAddress;
-    const char *goHuBeiCity;
-    const char *goHuBeiTime;
-    const char *contactProvince;
-    const char *contactCity;
-    const char *contactDistrict;
-    const char *contactAddress;
-    const char *contactTime;
-    const char *diagnosisTime;
-    const char *treatmentHospitalAddress;
-    const char *cureTime;
-    const char *abroadInfo;
-    int isAbroad;
-};
+  currentProvince: '',//目前所在地省
+  currentCity: '',//目前所在地市
+  currentDistrict:null,//目前所在地区
+  currentLocation: '',//目前所在地
+  //
+    requestFlag === 1，今日已提交,较昨日无变化回显时，获取最新数据
+    if(res.data.currentDistrict){
+    this.formData.currentLocation=areaJson.province_list[res.data.currentProvince]+'-'+areaJson.city_list[res.data.currentCity]+'-'+areaJson.county_list[res.data.currentDistrict];
+    }else{
+    this.formData.currentLocation=areaJson.province_list[res.data.currentProvince]+'-'+areaJson.city_list[res.data.currentCity];
+    //回显信息是否是海外
+    this.isSelectOverseas=(res.data.currentProvince==='900000');
+  //
+  currentAddress: '',//目前所在地详细地址
+
+  villageIsCase:'0',//所在小区或者村是否有确诊病例
+  caseAddress:'',//病例地址
+  peerIsCase:'0',//同住人是否有确诊病例
+  peerAddress:'',//共同居主人地址
+
+  isInTeamCity: '',
+  temperatureNormal: '0',
+  temperature: '',
+  selfHealthy: '0',
+  selfHealthyInfo:'',
+  selfHealthyTime:null,
+  friendHealthy: '0',
+  isolation: '0',
+
+  currentStatus:'1000705',//当前所属状态
+  diagnosisTime:null,//选择已治愈时确诊时间
+  treatmentHospitalAddress:'',//选择已治愈时治疗医院地址
+  cureTime:null,//选择已治愈时治愈时间
+
+  travelPatient:'1000803',//疫情旅行史
+  goHuBeiCity:'',//去过的湖北城市
+  goHuBeiTime:null,//去湖北城市时间
+
+  contactPatient: '1000904',//接触情况
+  contactTime:null,//接触时间
+  contactProvince: '',//接触地点省
+  contactCity: '',//接触地点市
+  contactDistrict:'',//接触地点区
+  contactLocation:'',//接触地点所在地
+  contactAddress:'',//接触地点所在地详细地址
+
+  isAbroad:'',//是否去过国外
+  abroadInfo:'',//去过的国外地区详细信息
+
+  seekMedical: '0',
+  seekMedicalInfo: '',
+  exceptionalCase: '0',
+  exceptionalCaseInfo: '',
+  isTrip: '0',
+  */
