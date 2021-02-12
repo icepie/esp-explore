@@ -1,5 +1,8 @@
-// 
+// Get Date Time
 #define CONFIG_GET_TIME_URL "http://quan.suning.com/getSysTime.do"
+
+// Set the ServerChan url
+#define CONFIG_SERVERCHAN_URL "http://sc.ftqq.com"
 
 // LIT(Luoyang Institute of Science and Technology) Health Platform
 #define CONFIG_LIT_ENDPOINT_LOGIN "http://hmgr.sec.lit.edu.cn/wms/healthyLogin"

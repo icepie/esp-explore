@@ -105,6 +105,51 @@ char *crypto_password(char *str)
 }
 
 /*
+ *  ServerChan function
+ *  
+ *  Param float, float, float
+ *  text -> Title
+ *  desp -> Content
+ * 
+ *  Return int
+ *  0 -> work fine
+ *  -1 -> connect error
+ *  1 -> login error
+ */
+int ServerChan(String sckey, String text, String desp)
+{
+
+  String eurl = CONFIG_SERVERCHAN_URL;
+  eurl += "/";
+  eurl += sckey;
+  eurl += ".send?text=";
+  eurl += text;
+  eurl += "&desp=";
+  eurl += desp;
+
+  http.setURL(eurl);
+
+  int httpCode = http.GET();
+  String payload = http.getString();
+  Serial.println(payload); //Print the response payload
+
+  if (httpCode <= 0)
+  {
+    return -1;
+  }
+
+  DynamicJsonDocument doc(2048);
+  deserializeJson(doc, payload);
+
+  if (doc["errno"].as<int>() != 0)
+  {
+    return 1;
+  }
+
+  return 0;
+}
+
+/*
  *  litFirstRecord function
  *  
  *  Param float, float, float
@@ -136,7 +181,7 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
     DynamicJsonDocument doc(2048);
     deserializeJson(doc, payload);
 
-    now = doc["sysTime2"].as<String>().substring(0,10);
+    now = doc["sysTime2"].as<String>().substring(0, 10);
   }
 
   if (now.isEmpty())
@@ -151,12 +196,12 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
   loginData["password"] = crypto_password(psw);
 
   serializeJson(loginData, buffer);
-  
+
   http.setURL(CONFIG_LIT_ENDPOINT_LOGIN);
   http.addHeader("Content-Type", "application/json");
 
-  httpCode = http.POST(buffer);  //Send the request to login
-  payload = http.getString(); //Get the request response payload
+  httpCode = http.POST(buffer); //Send the request to login
+  payload = http.getString();   //Get the request response payload
 
   Serial.println(payload); //Print the response payload
 
@@ -178,7 +223,7 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
 
   String token = loginRte["data"]["token"].as<String>();
 
-  // Create the urk for get last record info
+  // Create the url for get last record info
   String eurl = CONFIG_LIT_ENDPOINT_LASTRECORD;
   eurl += "?teamId=";
   eurl += loginRte["data"]["teamId"].as<String>();
@@ -258,7 +303,7 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
   http.setURL(CONFIG_LIT_ENDPOINT_ADDRECORD);
   http.addHeader("Content-Type", "application/json;charset=UTF-8");
   http.addHeader("token", token);
-  
+
   httpCode = http.POST(bigBuffer);
   payload = http.getString();
 
@@ -298,12 +343,15 @@ void setup()
 
   //
   char litUser[] = "";
-  char litPWD[] = "]";
+  char litPWD[] = "";
 
-  int r = litFirstRecord(litUser, litPWD);
-  Serial.println(r);
+  int lr = litFirstRecord(litUser, litPWD);
+  Serial.println(lr);
+
+  int sr = ServerChan("SCKEY", "ESP8266", "Iamhere");
+
+  Serial.println(sr);
   // Serial.println(timeClient.getDay());
-
 }
 
 void loop()
