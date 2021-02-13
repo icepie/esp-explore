@@ -32,7 +32,7 @@
 ### 克隆
 
 ```
-$ git https://github.com/icepie/esp-explore -b esp8266-arduino-litncov
+$ git clone https://github.com/icepie/esp-explore -b esp8266-arduino-litncov
 ```
 
 ### 编译
