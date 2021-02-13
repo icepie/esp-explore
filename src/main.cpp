@@ -104,6 +104,7 @@ char *crypto_password(char *str)
   return btoh(hex, result, HASH_SIZE);
 }
 
+
 /*
  *  ServerChan function
  *  
@@ -127,7 +128,7 @@ int ServerChan(String sckey, String text, String desp)
   eurl += "&desp=";
   eurl += desp;
 
-  http.setURL(eurl);
+  http.begin(client, eurl);
 
   int httpCode = http.GET();
   String payload = http.getString();
@@ -169,12 +170,11 @@ int ServerChan(String sckey, String text, String desp)
 int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temperatureTwo = 0.00, float temperatureThree = 0.00)
 {
 
+  String now;
+  // init http client
   http.begin(client, CONFIG_GET_TIME_URL);
-  http.addHeader("Content-Type", "application/json");
   int httpCode = http.GET();
   String payload = http.getString();
-
-  String now;
 
   if (httpCode > 0)
   {
@@ -348,10 +348,9 @@ void setup()
   int lr = litFirstRecord(litUser, litPWD);
   Serial.println(lr);
 
-  int sr = ServerChan("SCKEY", "ESP8266", "Iamhere");
-
+  int sr = ServerChan("SCKEY", "ESP8266", "HI");
   Serial.println(sr);
-  // Serial.println(timeClient.getDay());
+
 }
 
 void loop()
