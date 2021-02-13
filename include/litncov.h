@@ -9,6 +9,9 @@
 #define CONFIG_LIT_ENDPOINT_LASTRECORD "http://hmgr.sec.lit.edu.cn/wms/lastHealthyRecord"
 #define CONFIG_LIT_ENDPOINT_ADDRECORD "http://hmgr.sec.lit.edu.cn/wms/addHealthyRecord"
 
+// rte value to str
+String reportStatus[6] = {"OK", "LOGIN_ERROR", "GET_RECORD_ERROR", "REPORT_ERROR", "GET_TIME_ERROR", "TODAY_IS_REPORTE"};
+
 /* From: http//:<host>/web/#/healthForm Date: 2021-02-11 17:45:00
   mobile: '',
   age:'',

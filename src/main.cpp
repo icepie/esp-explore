@@ -9,6 +9,7 @@
 #include "config.h"
 #include "litncov.h"
 
+// crypto lib
 #include <Crypto.h>
 #include <SHA256.h>
 
@@ -104,7 +105,6 @@ char *crypto_password(char *str)
   return btoh(hex, result, HASH_SIZE);
 }
 
-
 /*
  *  ServerChan function
  *  
@@ -128,7 +128,8 @@ int ServerChan(String sckey, String text, String desp)
   eurl += "&desp=";
   eurl += desp;
 
-  http.begin(client, eurl);
+  // http.begin(client, eurl);
+  http.setURL(eurl);
 
   int httpCode = http.GET();
   String payload = http.getString();
@@ -340,24 +341,32 @@ void setup()
     Serial.println("Start module");
     smartConfig();
   }
-
-  //
-  char litUser[] = "";
-  char litPWD[] = "";
-
-  int lr = litFirstRecord(litUser, litPWD);
-  Serial.println(lr);
-
-  int sr = ServerChan("SCKEY", "ESP8266", "HI");
-  Serial.println(sr);
-
 }
 
 void loop()
 {
   timeClient.update();
   // Serial.println(timeClient.getFormattedTime());
+  Serial.println(timeClient.getFormattedTime());
 
-  // Serial.println(nowDateTime());
+  // run task
+  if (timeClient.getFormattedTime() == CONFIG_LIT_REPORT_TIME)
+  {
+    // set the user
+    char litUser[] = CONFIG_LIT_HEALTH_USER;
+    char litPWD[] = CONFIG_LIT_HEALTH_PWD;
+
+    // start report
+    int lr = litFirstRecord(litUser, litPWD);
+    Serial.println(lr);
+
+    // build the msg
+    String scDesp = "\tSTATUS:\t" + reportStatus[lr];
+
+    // push msg by ServerChan
+    int sr = ServerChan(CONFIG_SERVERCHAN_SCKEY, "ESP8266_JOB", reportStatus[lr]);
+    Serial.println(sr);
+  }
+
   delay(1000);
 }
