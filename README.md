@@ -21,9 +21,11 @@
 #define CONFIG_SERVERCHAN_SCKEY "" //server酱推送密钥
 
 // TASK
-#define CONFIG_LIT_REPORT_TIME "00:02:00" //(UTC+8)
+#define CONFIG_LIT_REPORT_TIME "00:02:00" //定时任务执行时间 (UTC+8)
 
 ```
+
+> 默认使用上次上报记录的温度进行上报, 如需自定义请参考 `src/main.cpp` 当中的 `int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temperatureTwo = 0.00, float temperatureThree = 0.00)` 
 
 ## 构建
 
