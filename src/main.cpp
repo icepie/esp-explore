@@ -1,5 +1,6 @@
 // dep lib
 #include <ArduinoJson.h>
+#include <arduino-timer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <NTPClient.h>
@@ -17,6 +18,8 @@
 
 WiFiClient client;
 HTTPClient http; //Declare an object of class HTTPClient
+
+auto timer = timer_create_default(); // create a timer with default settings
 
 WiFiUDP ntpUDP;
 
@@ -329,26 +332,11 @@ int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temper
   return 0;
 }
 
-void setup()
-{
-  Serial.begin(115200);
-  while (!Serial)
-    ;
-
-  // wifi config
-  if (!autoConfig())
-  {
-    Serial.println("Start module");
-    smartConfig();
-  }
-}
-
-void loop()
-{
+// callback for timeTask time
+bool timeTask(void *) {
+  // update time
   timeClient.update();
-  // Serial.println(timeClient.getFormattedTime());
   Serial.println(timeClient.getFormattedTime());
-
   // run task
   if (timeClient.getFormattedTime() == CONFIG_LIT_REPORT_TIME)
   {
@@ -367,6 +355,29 @@ void loop()
     int sr = ServerChan(CONFIG_SERVERCHAN_SCKEY, "ESP8266_JOB", reportStatus[lr]);
     Serial.println(sr);
   }
+  return true;
+}
 
-  delay(1000);
+
+void setup()
+{
+  Serial.begin(115200);
+  while (!Serial)
+    ;
+
+  // wifi config
+  if (!autoConfig())
+  {
+    Serial.println("Start module");
+    smartConfig();
+  }
+
+  timer.every(1000, timeTask);
+}
+
+
+void loop()
+{
+  // timer
+  timer.tick(); 
 }

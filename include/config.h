@@ -1,6 +1,6 @@
 // Default
 #define CONFIG_PROJECT_CODE "litncov"
-#define CONFIG_DEVICE_FW 0.3
+#define CONFIG_DEVICE_FW 0.4
 #define CONFIG_WIFI_RETRY_TIME 10
 
 // USER
@@ -9,4 +9,4 @@
 #define CONFIG_SERVERCHAN_SCKEY ""
 
 // TASK
-#define CONFIG_LIT_REPORT_TIME "00:02:00"
+#define CONFIG_LIT_REPORT_TIME "17:04:00"
