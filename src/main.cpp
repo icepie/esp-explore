@@ -69,14 +69,42 @@ void smartConfig()
     }
 }
 
+void index(Request &req, Response &res)
+{
+    res.print("Hello World!");
+}
 
-void index(Request &req, Response &res) {
-  res.print("Hello World!");
+void sysInfo(Request &req, Response &res)
+{
+    res.set("Content-Type", "application/json");
+
+    char buffer[256];
+    StaticJsonDocument<200> data;
+
+    data["code"] = 200;
+
+    String id = "0x";
+    id += String(ESP.getChipId(), HEX);
+
+    data["data"]["sn"] = id;
+    data["data"]["fw"] = CONFIG_PROJECT_CODE;
+    data["data"]["ver"] = CONFIG_DEVICE_FW;
+    data["data"]["network"] = WiFi.SSID();
+    data["data"]["ip"] = WiFi.localIP().toString();
+
+    data["msg"] = "ok";
+
+    serializeJson(data, buffer);
+
+    res.print(buffer);
+
+    res.end();
 }
 
 void router()
 {
     app.get("/", &index);
+    app.get("/sysinfo", &sysInfo);
     server.begin();
 }
 
