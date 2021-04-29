@@ -1,32 +1,262 @@
-// dep lib
+
+// dep tools lib
+#include <Arduino.h>
 #include <ArduinoJson.h>
-#include <arduino-timer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
+#include <TaskScheduler.h>
+#include <PubSubClient.h>
 
 // customized headers
 #include "config.h"
-#include "litncov.h"
+#include "getinfo.h"
+#include "ota.h"
+#include "led.h"
 
-// crypto lib
-#include <Crypto.h>
-#include <SHA256.h>
+const char *ssid = "e-LyLg";
+const char *password = "";
 
-#define HASH_SIZE 32
+String token = "a410a433596753d9ddd0f76bec5689ab3fade6c2";
+
+// // is socket ?
+// #define CONFIG_SOCKET
+
+// declare functions
+void mqtt_callback(char *topic, byte *payload, unsigned int length);
+void job_callback();
+void auth_giwifi();
+void send_status(unsigned int msg_id);
+void dp_handler();
+
+String action_name = "light"; //socket
+
+// #if defined(CONFIG_SOCKET)
+// String action_name = "socket";
+// #endif
+
+Led myLed;     //Reverse
+Led light(12); //Reverse
+
+// hw set
+String deviceSN = getChipId(); // Must be unique on the MQTT network
+
+// mqtt set
+String pubTopic = setTopic(deviceSN, "msg");
+String subTopic = setTopic(deviceSN, "event");
 
 WiFiClient client;
-HTTPClient http; //Declare an object of class HTTPClient
+PubSubClient mqttclient(CONFIG_MQTT_HOST, CONFIG_MQTT_PORT, &mqtt_callback, client);
 
-auto timer = timer_create_default(); // create a timer with default settings
+Task job_task(5 * TASK_MINUTE, TASK_FOREVER, &job_callback);
+Task auth_task(15  * TASK_SECOND, TASK_FOREVER, &auth_giwifi);
+Scheduler runner;
 
-WiFiUDP ntpUDP;
+void job_callback()
+{
+    if (!mqttclient.connected())
+    {
+        Serial.print(F("MQTT State: "));
+        Serial.println(mqttclient.state());
+        if (mqttclient.connect(deviceSN.c_str(), CONFIG_MQTT_USER, CONFIG_MQTT_PASS))
+        {
+            Serial.print(F("MQTT Connected."));
+            Serial.println("Client id = " + deviceSN);
+            mqttclient.subscribe(subTopic.c_str());
+            Serial.println("Sub Topic = " + subTopic);
+            Serial.println("Pub Topic = " + pubTopic);
+        }
+    }
+}
 
-// You can specify the time server pool and the offset (in seconds, can be
-// changed later with setTimeOffset() ). Additionaly you can specify the
-// update interval (in milliseconds, can be changed using setUpdateInterval() ).
-NTPClient timeClient(ntpUDP, "ntp1.aliyun.com", 3600 * 8); //UTC+8
+void ota_update()
+{
+    ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
+    ESPhttpUpdate.onStart(update_started);
+    ESPhttpUpdate.onEnd(update_finished);
+    ESPhttpUpdate.onProgress(update_progress);
+    ESPhttpUpdate.onError(update_error);
+
+    t_httpUpdate_return ret = ESPhttpUpdate.update(CONFIG_OTA_HOST, CONFIG_OTA_PORT, CONFIG_OTA_PATH);
+
+    switch (ret)
+    {
+    case HTTP_UPDATE_FAILED:
+        Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+        break;
+
+    case HTTP_UPDATE_NO_UPDATES:
+        Serial.println("HTTP_UPDATE_NO_UPDATES");
+        break;
+
+    case HTTP_UPDATE_OK:
+        Serial.println("HTTP_UPDATE_OK");
+        break;
+    }
+}
+
+
+void auth_giwifi()
+{
+  HTTPClient http;
+
+  String gateway = WiFi.gatewayIP().toString();
+
+  String url = "http://" + gateway;
+  url = url + ":8060";
+  url = url + "/wifidog/auth?token=";
+  url = url + token;
+  url = url + "&info=";
+  Serial.println(url);
+  // Your IP address with path or Domain name with URL path
+  http.begin(url);
+
+  // Send HTTP POST request
+  int httpResponseCode = http.GET();
+
+  if (httpResponseCode > 0)
+  {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    // payload = http.getString();
+    // Serial.print(payload);
+  }
+  else
+  {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  // Free resources
+  http.end();
+
+  return;
+}
+
+void send_status(unsigned int msg_id, String cmd)
+{
+    DynamicJsonDocument msg(1024);
+
+    String type = "status";
+
+    // create the job json data
+    msg["type"] = type;
+    msg["msg_id"] = msg_id;
+    msg["event_cmd"] = cmd;
+
+    if (light.getStatus())
+    {
+        msg["data"][action_name] = "off";
+    }
+    else
+    {
+        msg["data"][action_name] = "on";
+    }
+
+    if (myLed.getStatus())
+    {
+        msg["data"]["led"] = "off";
+    }
+    else
+    {
+        msg["data"]["led"] = "on";
+    }
+
+    msg["sn"] = deviceSN;
+    msg["model"] = CONFIG_DEVICE_MODEL + action_name;
+    msg["hw_ver"] = CONFIG_DEVICE_HW;
+    msg["fw_ver"] = CONFIG_DEVICE_FW;
+    //msg["data"]["full_ver"] = ESP.getFullVersion();
+
+    char buffer[256];
+    serializeJson(msg, buffer);
+    mqttclient.publish(pubTopic.c_str(), buffer);
+}
+
+void send_feedback(unsigned int msg_id, String cmd)
+{
+    DynamicJsonDocument msg(1024);
+
+    String type = "feedback";
+    // create the job json data
+    msg["type"] = type;
+    msg["msg_id"] = msg_id;
+    msg["event_cmd"] = cmd;
+
+    msg["sn"] = deviceSN;
+    msg["model"] = CONFIG_DEVICE_MODEL + action_name;
+    msg["hw_ver"] = CONFIG_DEVICE_HW;
+    msg["fw_ver"] = CONFIG_DEVICE_FW;
+
+    char buffer[256];
+    serializeJson(msg, buffer);
+    mqttclient.publish(pubTopic.c_str(), buffer);
+}
+
+// mqtt callback func
+void mqtt_callback(char *topic, byte *payload, unsigned int length)
+{
+    byte *end = payload + length;
+    for (byte *p = payload; p < end; ++p)
+    {
+        Serial.print(*((const char *)p)); // message from the topic
+    }
+    Serial.println("");
+
+    StaticJsonDocument<256> doc;
+    deserializeJson(doc, payload, length);
+    JsonObject event = doc.as<JsonObject>();
+
+    String cmd = event["cmd"];
+    String data = event["data"];
+    unsigned int msg_id = event["msg_id"];
+
+    if (msg_id == 0)
+    {
+        return;
+    }
+
+    if (cmd == "dp")
+    {
+        ESP.deepSleep(3e6);
+        // runner.addTask(deepsleep_task);
+        // deepsleep_task.enable();
+    }
+    else if (cmd == "led")
+    {
+        send_feedback(msg_id, cmd);
+        if (data == "off")
+            myLed.on();
+        else if (data == "on")
+            myLed.off();
+    }
+    else if (cmd == "ota")
+    {
+        send_feedback(msg_id, cmd);
+        ota_update();
+    }
+    else if (cmd == "status")
+        send_status(msg_id, cmd);
+    else if (cmd == action_name)
+    {
+        send_feedback(msg_id, cmd);
+        if (data == "on")
+            light.off();
+        else if (data == "off")
+            light.on();
+    }
+    else if (cmd == "reset")
+    {
+        send_feedback(msg_id, cmd);
+        if (data == "factory")
+        {
+            WiFi.disconnect(false);
+            ESP.eraseConfig();
+        }
+        ESP.reset();
+    }
+    else{
+        send_feedback(msg_id, "unknown");
+    }
+}
 
 /*
  *  Determine if the device is automatically connected to wifi via cache
@@ -34,350 +264,94 @@ NTPClient timeClient(ntpUDP, "ntp1.aliyun.com", 3600 * 8); //UTC+8
  */
 bool autoConfig()
 {
-  WiFi.begin();
-  for (int i = 0; i < CONFIG_WIFI_RETRY_TIME; i++)
-  {
-    int wstatus = WiFi.status();
-    if (wstatus == WL_CONNECTED)
+    WiFi.begin();
+    if (WiFi.SSID().length() == 0)
     {
-      Serial.println("AutoConfig Success");
-      // wifi info
-      Serial.println("WiFi Connected.");
-      Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
-      Serial.printf("Password: %s\n", WiFi.psk().c_str());
-      Serial.print("IP Address: ");
-      Serial.println(WiFi.localIP());
-      WiFi.printDiag(Serial);
-      return true;
-      //break;
+        return false;
     }
-    else
+
+    for (int i = 0; i < CONFIG_WIFI_RETRY_TIME; i++)
     {
-      Serial.println("AutoConfig Waiting......");
-      Serial.println("WIFI STATUS: " + wstatus);
-      delay(1000);
+        int wstatus = WiFi.status();
+        if (wstatus == WL_CONNECTED)
+        {
+            Serial.println("AutoConfig Success");
+            //get_wifi_info();
+            WiFi.printDiag(Serial);
+            return true;
+            //break;
+        }
+        else
+        {
+            Serial.println("AutoConfig Waiting......");
+            Serial.println("WIFI STATUS: " + wstatus);
+            delay(1000);
+        }
     }
-  }
-  Serial.println("AutoConfig Faild!");
-  return false;
-  WiFi.printDiag(Serial);
+    Serial.println("AutoConfig Faild!");
+    return false;
+    WiFi.printDiag(Serial);
 }
 
-/*
- *  SmartConfig function
- *  Return void
- */
-void smartConfig()
-{
-  WiFi.mode(WIFI_STA);
-  Serial.println("\r\nWait for Smartconfig");
-  WiFi.beginSmartConfig();
-  while (1)
-  {
-    Serial.print(".");
-    if (WiFi.smartConfigDone())
-    {
-      Serial.println("SmartConfig Success\n");
-      WiFi.setAutoConnect(true); // set auto connect when device boot
-      break;
-    }
-    delay(500); // It's important to add delay to this place, otherwise it's extremely easy to crash and restart.
-  }
-}
-
-char *btoh(char *dest, uint8_t *src, int len)
-{
-  char *d = dest;
-  while (len--)
-    sprintf(d, "%02x", (unsigned char)*src++), d += 2;
-  return dest;
-}
-
-char *crypto_password(char *str)
-{
-  char hex[256];
-  char *msg = str;
-
-  uint8_t result[HASH_SIZE];
-  SHA256 sha256Hash;
-
-  sha256Hash.reset();
-  sha256Hash.update(msg, strlen(msg));
-  sha256Hash.finalize(result, HASH_SIZE);
-
-  return btoh(hex, result, HASH_SIZE);
-}
-
-/*
- *  ServerChan function
- *  
- *  Param float, float, float
- *  text -> Title
- *  desp -> Content
- * 
- *  Return int
- *  0 -> work fine
- *  -1 -> connect error
- *  1 -> login error
- */
-int ServerChan(String sckey, String text, String desp)
-{
-
-  String eurl = CONFIG_SERVERCHAN_URL;
-  eurl += "/";
-  eurl += sckey;
-  eurl += ".send?text=";
-  eurl += text;
-  eurl += "&desp=";
-  eurl += desp;
-
-  // http.begin(client, eurl);
-  http.setURL(eurl);
-
-  int httpCode = http.GET();
-  String payload = http.getString();
-  Serial.println(payload); //Print the response payload
-
-  if (httpCode <= 0)
-  {
-    return -1;
-  }
-
-  DynamicJsonDocument doc(2048);
-  deserializeJson(doc, payload);
-
-  if (doc["errno"].as<int>() != 0)
-  {
-    return 1;
-  }
-
-  return 0;
-}
-
-/*
- *  litFirstRecord function
- *  
- *  Param float, float, float
- *  temperature -> default is last
- *  temperatureTwo -> default is last
- *  temperatureThree -> default is last
- * 
- *  Return int
- *  0 -> work fine
- *  -1 -> connect error
- *  1 -> login error
- *  2 -> fail to get the last record info
- *  3 -> report error
- *  4 -> get the date time error
- *  5 -> today is reported
- */
-int litFirstRecord(char *user, char *psw, float temperature = 0.00, float temperatureTwo = 0.00, float temperatureThree = 0.00)
-{
-
-  String now;
-  // init http client
-  http.begin(client, CONFIG_GET_TIME_URL);
-  int httpCode = http.GET();
-  String payload = http.getString();
-
-  if (httpCode > 0)
-  {
-    DynamicJsonDocument doc(2048);
-    deserializeJson(doc, payload);
-
-    now = doc["sysTime2"].as<String>().substring(0, 10);
-  }
-
-  if (now.isEmpty())
-  {
-    return 4;
-  }
-
-  char buffer[256];
-  StaticJsonDocument<200> loginData;
-
-  loginData["cardNo"] = user;
-  loginData["password"] = crypto_password(psw);
-
-  serializeJson(loginData, buffer);
-
-  http.setURL(CONFIG_LIT_ENDPOINT_LOGIN);
-  http.addHeader("Content-Type", "application/json");
-
-  httpCode = http.POST(buffer); //Send the request to login
-  payload = http.getString();   //Get the request response payload
-
-  Serial.println(payload); //Print the response payload
-
-  // connect error
-  if (httpCode <= 0)
-  {
-    return -1;
-  }
-
-  // login return
-  DynamicJsonDocument loginRte(2048);
-  deserializeJson(loginRte, payload);
-
-  // if login fail
-  if (loginRte["code"].as<int>() != 200)
-  {
-    return 1;
-  }
-
-  String token = loginRte["data"]["token"].as<String>();
-
-  // Create the url for get last record info
-  String eurl = CONFIG_LIT_ENDPOINT_LASTRECORD;
-  eurl += "?teamId=";
-  eurl += loginRte["data"]["teamId"].as<String>();
-  eurl += "&userId=";
-  eurl += loginRte["data"]["userId"].as<String>();
-
-  http.setURL(eurl);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("token", token);
-
-  httpCode = http.GET();
-  payload = http.getString();
-
-  Serial.println(payload);
-
-  if (httpCode <= 0)
-  { //Check the returning code
-    return -1;
-  }
-
-  DynamicJsonDocument lastRecordRte(2048);
-  deserializeJson(lastRecordRte, payload);
-
-  Serial.println(payload);
-
-  // if get info fail
-  if (lastRecordRte["code"].as<int>() != 200)
-  {
-    return 2;
-  }
-
-  char bigBuffer[1500];
-
-  DynamicJsonDocument recordData(2048);
-
-  // most info from lastRecordRte
-  deserializeJson(recordData, lastRecordRte["data"].as<String>());
-
-  if (now == lastRecordRte["data"]["reportDate"].as<String>())
-  {
-    return 5;
-  }
-
-  recordData["reportDate"] = now;
-
-  recordData["mobile"] = loginRte["data"]["mobile"];
-  recordData["nativePlaceProvince"] = loginRte["data"]["nativePlaceProvince"];
-  recordData["nativePlaceCity"] = loginRte["data"]["nativePlaceCity"];
-  recordData["nativePlaceDistrict"] = loginRte["data"]["nativePlaceDistrict"];
-  recordData["nativePlaceAddress"] = loginRte["data"]["nativePlaceAddress"];
-  recordData["localAddress"] = loginRte["data"]["localAddress"];
-
-  recordData["userId"] = loginRte["data"]["userId"];
-  recordData["teamId"] = loginRte["data"]["teamId"];
-
-  recordData["isTrip"] = lastRecordRte["data"]["isAbroad"];
-
-  if (temperature != 0.00)
-  {
-    recordData["temperature"] = temperature;
-  }
-
-  if (temperatureTwo != 0.00)
-  {
-    recordData["temperatureTwo"] = temperatureTwo;
-  }
-
-  if (temperatureThree != 0.00)
-  {
-    recordData["temperatureThree"] = temperatureThree;
-  }
-
-  serializeJson(recordData, bigBuffer);
-
-  Serial.println(bigBuffer);
-
-  http.setURL(CONFIG_LIT_ENDPOINT_ADDRECORD);
-  http.addHeader("Content-Type", "application/json;charset=UTF-8");
-  http.addHeader("token", token);
-
-  httpCode = http.POST(bigBuffer);
-  payload = http.getString();
-
-  if (httpCode <= 0)
-  { //Check the returning code
-    return -1;
-  }
-
-  DynamicJsonDocument firstRecordRte(2048);
-  deserializeJson(firstRecordRte, payload);
-
-  Serial.println(payload);
-
-  // if report info fail
-  if (firstRecordRte["code"].as<int>() != 200)
-  {
-    return 2;
-  }
-
-  // http.end();
-
-  return 0;
-}
-
-// callback for timeTask time
-bool timeTask(void *) {
-  // update time
-  timeClient.update();
-  Serial.println(timeClient.getFormattedTime());
-  // run task
-  if (timeClient.getFormattedTime() == CONFIG_LIT_REPORT_TIME)
-  {
-    // set the user
-    char litUser[] = CONFIG_LIT_HEALTH_USER;
-    char litPWD[] = CONFIG_LIT_HEALTH_PWD;
-
-    // start report
-    int lr = litFirstRecord(litUser, litPWD);
-    Serial.println(lr);
-
-    // build the msg
-    String scDesp = "\tSTATUS:\t" + reportStatus[lr];
-
-    // push msg by ServerChan
-    int sr = ServerChan(CONFIG_SERVERCHAN_SCKEY, "ESP8266_JOB", reportStatus[lr]);
-    Serial.println(sr);
-  }
-  return true;
-}
-
+// /*
+//  *  SmartConfig function
+//  *  Return void
+//  */
+// void smartConfig()
+// {
+//     WiFi.mode(WIFI_STA);
+//     Serial.println("\r\nWait for Smartconfig");
+//     WiFi.beginSmartConfig();
+//     while (1)
+//     {
+//         Serial.printf(".");
+//         myLed.off();
+//         delay(500);
+//         if (WiFi.smartConfigDone())
+//         {
+//             Serial.println("SmartConfig Success\n");
+//             //get_wifi_info();
+//             WiFi.setAutoConnect(true); // set auto connect when device boot
+//             ESP.reset();
+//             //break;
+//         }
+//         myLed.on();
+//         delay(500);
+//     }
+// }
 
 void setup()
 {
-  Serial.begin(115200);
-  while (!Serial)
-    ;
+    Serial.begin(115200);
+    while (!Serial)
+        ;
 
-  // wifi config
-  if (!autoConfig())
-  {
-    Serial.println("Start module");
-    smartConfig();
-  }
+    randomSeed(analogRead(0));
 
-  timer.every(1000, timeTask);
+    // wifi config
+    if (!autoConfig())
+    {
+        Serial.println("Start module");
+        WiFi.begin(ssid, password);
+    }
+
+    // led on
+    myLed.off();
+
+    // print chip info
+    get_device_info();
+
+    // runner setting
+    runner.init();
+    runner.addTask(job_task);
+    runner.addTask(auth_task);
+
+    job_task.enable();
+    auth_task.enable();
 }
-
 
 void loop()
 {
-  // timer
-  timer.tick(); 
+    mqttclient.loop();
+    runner.execute();
 }
