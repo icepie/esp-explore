@@ -1,11 +1,11 @@
 
 // dep tools lib
-#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <TaskScheduler.h>
 #include <PubSubClient.h>
+#include <asyncHTTPrequest.h>
 
 // customized headers
 #include "config.h"
@@ -47,8 +47,6 @@ void dump(int netif_idx, const char* data, size_t len, int out, int success) {
 }
 #endif
 
-
-
 const char *ssid = "e-LyLg";
 const char *password = "";
 
@@ -64,7 +62,7 @@ void auth_giwifi();
 void send_status(unsigned int msg_id);
 void dp_handler();
 
-String action_name = "light"; //socket
+String action_name = "socket"; //socket
 
 // #if defined(CONFIG_SOCKET)
 // String action_name = "socket";
@@ -81,10 +79,11 @@ String pubTopic = setTopic(deviceSN, "msg");
 String subTopic = setTopic(deviceSN, "event");
 
 WiFiClient client;
+asyncHTTPrequest request;
 PubSubClient mqttclient(CONFIG_MQTT_HOST, CONFIG_MQTT_PORT, &mqtt_callback, client);
 
-Task job_task(5 * TASK_MINUTE, TASK_FOREVER, &job_callback);
-Task auth_task(15  * TASK_SECOND, TASK_FOREVER, &auth_giwifi);
+Task job_task(0, TASK_FOREVER, &job_callback);
+Task auth_task(3  * TASK_MINUTE, TASK_FOREVER, &auth_giwifi);
 Scheduler runner;
 
 void job_callback()
@@ -102,42 +101,7 @@ void job_callback()
             Serial.println("Pub Topic = " + pubTopic);
         }
     }
-}
-
-void auth_giwifi()
-{
-  HTTPClient http;
-
-  String gateway = WiFi.gatewayIP().toString();
-
-  String url = "http://" + gateway;
-  url = url + ":8060";
-  url = url + "/wifidog/auth?token=";
-  url = url + token;
-  url = url + "&info=";
-  Serial.println(url);
-  // Your IP address with path or Domain name with URL path
-  http.begin(client,url);
-
-  // Send HTTP POST request
-  int httpResponseCode = http.GET();
-
-  if (httpResponseCode > 0)
-  {
-    Serial.print("HTTP Response code: ");
-    Serial.println(httpResponseCode);
-    // payload = http.getString();
-    // Serial.print(payload);
-  }
-  else
-  {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
-  }
-  // Free resources
-  http.end();
-
-  return;
+    mqttclient.loop();
 }
 
 void send_status(unsigned int msg_id, String cmd)
@@ -206,6 +170,74 @@ void send_feedback(unsigned int msg_id, String cmd)
     mqttclient.publish(pubTopic.c_str(), buffer);
 }
 
+void auth_giwifi()
+{
+//   HTTPClient http;
+
+  String gateway = WiFi.gatewayIP().toString();
+
+  String url = "http://" + gateway;
+  url = url + ":8060";
+  url = url + "/wifidog/auth?token=";
+  url = url + token;
+  url = url + "&info=";
+  Serial.println(url);
+//   // Your IP address with path or Domain name with URL path
+//   http.begin(client,url);
+
+//   // Send HTTP POST request
+//   int httpResponseCode = http.GET();
+
+//   if (httpResponseCode > 0)
+//   {
+//     Serial.print("HTTP Response code: ");
+//     Serial.println(httpResponseCode);
+//     // payload = http.getString();
+//     // Serial.print(payload);
+//   }
+//   else
+//   {
+//     Serial.print("Error code: ");
+//     Serial.println(httpResponseCode);
+//   }
+
+//   // Free resources
+//   http.end();
+    if(request.readyState() == 0 || request.readyState() == 4){
+        request.open("GET", url.c_str());
+        request.send();
+    }
+    Serial.println(request.responseHTTPcode());
+  return;
+}
+
+
+void ota_update()
+{
+    ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
+    ESPhttpUpdate.onStart(update_started);
+    ESPhttpUpdate.onEnd(update_finished);
+    ESPhttpUpdate.onProgress(update_progress);
+    ESPhttpUpdate.onError(update_error);
+
+    t_httpUpdate_return ret = ESPhttpUpdate.update(client,"http://sz.icepie.net:6689/.pio/build/nodemcuv2/firmware.bin");
+
+    switch (ret)
+    {
+    case HTTP_UPDATE_FAILED:
+        Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+        break;
+
+    case HTTP_UPDATE_NO_UPDATES:
+        Serial.println("HTTP_UPDATE_NO_UPDATES");
+        break;
+
+    case HTTP_UPDATE_OK:
+        Serial.println("HTTP_UPDATE_OK");
+        break;
+    }
+}
+
 // mqtt callback func
 void mqtt_callback(char *topic, byte *payload, unsigned int length)
 {
@@ -272,36 +304,36 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length)
  *  Determine if the device is automatically connected to wifi via cache
  *  Return a Boolean value
  */
-bool autoConfig()
-{
-    WiFi.begin();
-    if (WiFi.SSID().length() == 0)
-    {
-        return false;
-    }
+// bool autoConfig()
+// {
+//     WiFi.begin();
+//     if (WiFi.SSID().length() == 0)
+//     {
+//         return false;
+//     }
 
-    for (int i = 0; i < CONFIG_WIFI_RETRY_TIME; i++)
-    {
-        int wstatus = WiFi.status();
-        if (wstatus == WL_CONNECTED)
-        {
-            Serial.println("AutoConfig Success");
-            //get_wifi_info();
-            WiFi.printDiag(Serial);
-            return true;
-            //break;
-        }
-        else
-        {
-            Serial.println("AutoConfig Waiting......");
-            Serial.println("WIFI STATUS: " + wstatus);
-            delay(1000);
-        }
-    }
-    Serial.println("AutoConfig Faild!");
-    return false;
-    WiFi.printDiag(Serial);
-}
+//     for (int i = 0; i < CONFIG_WIFI_RETRY_TIME; i++)
+//     {
+//         int wstatus = WiFi.status();
+//         if (wstatus == WL_CONNECTED)
+//         {
+//             Serial.println("AutoConfig Success");
+//             //get_wifi_info();
+//             WiFi.printDiag(Serial);
+//             return true;
+//             //break;
+//         }
+//         else
+//         {
+//             Serial.println("AutoConfig Waiting......");
+//             Serial.println("WIFI STATUS: " + wstatus);
+//             delay(1000);
+//         }
+//     }
+//     Serial.println("AutoConfig Faild!");
+//     return false;
+//     WiFi.printDiag(Serial);
+// }
 
 // /*
 //  *  SmartConfig function
@@ -365,10 +397,10 @@ void setup()
   dhcpSoftAP.dhcps_set_dns(1, WiFi.dnsIP(1));
 
   WiFi.softAPConfig(  // enable AP, with android-compatible google domain
-    IPAddress(172, 217, 28, 254),
-    IPAddress(172, 217, 28, 254),
+    IPAddress(192,168, 9, 1),
+    IPAddress(192, 168, 9, 1),
     IPAddress(255, 255, 255, 0));
-  WiFi.softAP(STASSID "extender", STAPSK);
+  WiFi.softAP("IOT-"+deviceSN, STAPSK);
   Serial.printf("AP: %s\n", WiFi.softAPIP().toString().c_str());
 
   Serial.printf("Heap before: %d\n", ESP.getFreeHeap());
@@ -394,8 +426,6 @@ void setup()
     //      WiFi.begin(ssid, password);
     // }
 
-    auth_giwifi();
-
     // led on
     myLed.off();
 
@@ -413,6 +443,6 @@ void setup()
 
 void loop()
 {
-    mqttclient.loop();
+    //mqttclient.loop();
     runner.execute();
 }
