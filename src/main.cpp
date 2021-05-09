@@ -30,22 +30,22 @@
 #define NAPT 1000
 #define NAPT_PORT 10
 
-#if HAVE_NETDUMP
+// #if HAVE_NETDUMP
 
-#include <NetDump.h>
+// #include <NetDump.h>
 
-void dump(int netif_idx, const char* data, size_t len, int out, int success) {
-  (void)success;
-  Serial.print(out ? F("out ") : F(" in "));
-  Serial.printf("%d ", netif_idx);
+// void dump(int netif_idx, const char* data, size_t len, int out, int success) {
+//   (void)success;
+//   Serial.print(out ? F("out ") : F(" in "));
+//   Serial.printf("%d ", netif_idx);
 
-  // optional filter example: if (netDump_is_ARP(data))
-  {
-    netDump(Serial, data, len);
-    //netDumpHex(Serial, data, len);
-  }
-}
-#endif
+//   // optional filter example: if (netDump_is_ARP(data))
+//   {
+//     netDump(Serial, data, len);
+//     //netDumpHex(Serial, data, len);
+//   }
+// }
+// #endif
 
 const char *ssid = "e-LyLg";
 const char *password = "";
@@ -212,31 +212,31 @@ void auth_giwifi()
 }
 
 
-void ota_update()
-{
-    ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
-    ESPhttpUpdate.onStart(update_started);
-    ESPhttpUpdate.onEnd(update_finished);
-    ESPhttpUpdate.onProgress(update_progress);
-    ESPhttpUpdate.onError(update_error);
+// void ota_update()
+// {
+//     ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
+//     ESPhttpUpdate.onStart(update_started);
+//     ESPhttpUpdate.onEnd(update_finished);
+//     ESPhttpUpdate.onProgress(update_progress);
+//     ESPhttpUpdate.onError(update_error);
 
-    t_httpUpdate_return ret = ESPhttpUpdate.update(client,"http://sz.icepie.net:6689/.pio/build/nodemcuv2/firmware.bin");
+//     t_httpUpdate_return ret = ESPhttpUpdate.update(client,"http://sz.icepie.net:6689/.pio/build/nodemcuv2/firmware.bin");
 
-    switch (ret)
-    {
-    case HTTP_UPDATE_FAILED:
-        Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-        break;
+//     switch (ret)
+//     {
+//     case HTTP_UPDATE_FAILED:
+//         Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+//         break;
 
-    case HTTP_UPDATE_NO_UPDATES:
-        Serial.println("HTTP_UPDATE_NO_UPDATES");
-        break;
+//     case HTTP_UPDATE_NO_UPDATES:
+//         Serial.println("HTTP_UPDATE_NO_UPDATES");
+//         break;
 
-    case HTTP_UPDATE_OK:
-        Serial.println("HTTP_UPDATE_OK");
-        break;
-    }
-}
+//     case HTTP_UPDATE_OK:
+//         Serial.println("HTTP_UPDATE_OK");
+//         break;
+//     }
+// }
 
 // mqtt callback func
 void mqtt_callback(char *topic, byte *payload, unsigned int length)
@@ -376,9 +376,9 @@ void setup()
   Serial.printf("Heap on start: %d\n", ESP.getFreeHeap());
 
 
-#if HAVE_NETDUMP
-  phy_capture = dump;
-#endif
+// #if HAVE_NETDUMP
+//   phy_capture = dump;
+// #endif
 
   // first, connect to STA so we can get a proper local DNS server
   WiFi.mode(WIFI_STA);
@@ -400,7 +400,7 @@ void setup()
     IPAddress(192,168, 9, 1),
     IPAddress(192, 168, 9, 1),
     IPAddress(255, 255, 255, 0));
-  WiFi.softAP("IOT-"+deviceSN, STAPSK);
+  WiFi.softAP("ICEPIE-IOT-"+deviceSN, STAPSK);
   Serial.printf("AP: %s\n", WiFi.softAPIP().toString().c_str());
 
   Serial.printf("Heap before: %d\n", ESP.getFreeHeap());
