@@ -13,10 +13,46 @@
 #include "ota.h"
 #include "led.h"
 
+// #if LWIP_FEATURES && !LWIP_IPV6
+
+#define HAVE_NETDUMP 0
+
+#ifndef STASSID
+#define STASSID "e-LyLg"
+#define STAPSK  ""
+#endif
+
+#include <ESP8266WiFi.h>
+#include <lwip/napt.h>
+#include <lwip/dns.h>
+#include <LwipDhcpServer.h>
+
+#define NAPT 1000
+#define NAPT_PORT 10
+
+#if HAVE_NETDUMP
+
+#include <NetDump.h>
+
+void dump(int netif_idx, const char* data, size_t len, int out, int success) {
+  (void)success;
+  Serial.print(out ? F("out ") : F(" in "));
+  Serial.printf("%d ", netif_idx);
+
+  // optional filter example: if (netDump_is_ARP(data))
+  {
+    netDump(Serial, data, len);
+    //netDumpHex(Serial, data, len);
+  }
+}
+#endif
+
+
+
 const char *ssid = "e-LyLg";
 const char *password = "";
 
-String token = "a410a433596753d9ddd0f76bec5689ab3fade6c2";
+String token = "bd909515be366a0d5cace96e49eb4007938c190a";
 
 // // is socket ?
 // #define CONFIG_SOCKET
@@ -68,33 +104,6 @@ void job_callback()
     }
 }
 
-void ota_update()
-{
-    ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
-    ESPhttpUpdate.onStart(update_started);
-    ESPhttpUpdate.onEnd(update_finished);
-    ESPhttpUpdate.onProgress(update_progress);
-    ESPhttpUpdate.onError(update_error);
-
-    t_httpUpdate_return ret = ESPhttpUpdate.update(CONFIG_OTA_HOST, CONFIG_OTA_PORT, CONFIG_OTA_PATH);
-
-    switch (ret)
-    {
-    case HTTP_UPDATE_FAILED:
-        Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-        break;
-
-    case HTTP_UPDATE_NO_UPDATES:
-        Serial.println("HTTP_UPDATE_NO_UPDATES");
-        break;
-
-    case HTTP_UPDATE_OK:
-        Serial.println("HTTP_UPDATE_OK");
-        break;
-    }
-}
-
-
 void auth_giwifi()
 {
   HTTPClient http;
@@ -108,7 +117,7 @@ void auth_giwifi()
   url = url + "&info=";
   Serial.println(url);
   // Your IP address with path or Domain name with URL path
-  http.begin(url);
+  http.begin(client,url);
 
   // Send HTTP POST request
   int httpResponseCode = http.GET();
@@ -160,13 +169,19 @@ void send_status(unsigned int msg_id, String cmd)
         msg["data"]["led"] = "on";
     }
 
+    String gateway = WiFi.gatewayIP().toString();
+    String ssid =  WiFi.SSID().c_str();
+
+    msg["wifi"]["ssid"] = ssid; 
+    msg["wifi"]["gateway"] = gateway;
+    //msg["wifi"]["token"] = token.c_str();
     msg["sn"] = deviceSN;
     msg["model"] = CONFIG_DEVICE_MODEL + action_name;
     msg["hw_ver"] = CONFIG_DEVICE_HW;
     msg["fw_ver"] = CONFIG_DEVICE_FW;
     //msg["data"]["full_ver"] = ESP.getFullVersion();
 
-    char buffer[256];
+    char buffer[1024];
     serializeJson(msg, buffer);
     mqttclient.publish(pubTopic.c_str(), buffer);
 }
@@ -227,11 +242,6 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length)
             myLed.on();
         else if (data == "on")
             myLed.off();
-    }
-    else if (cmd == "ota")
-    {
-        send_feedback(msg_id, cmd);
-        ota_update();
     }
     else if (cmd == "status")
         send_status(msg_id, cmd);
@@ -328,12 +338,63 @@ void setup()
 
     randomSeed(analogRead(0));
 
-    // wifi config
-    if (!autoConfig())
-    {
-        Serial.println("Start module");
-        WiFi.begin(ssid, password);
+
+//   Serial.begin(115200);
+  Serial.printf("\n\nNAPT Range extender\n");
+  Serial.printf("Heap on start: %d\n", ESP.getFreeHeap());
+
+
+#if HAVE_NETDUMP
+  phy_capture = dump;
+#endif
+
+  // first, connect to STA so we can get a proper local DNS server
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(STASSID, STAPSK);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print('.');
+    delay(500);
+  }
+  Serial.printf("\nSTA: %s (dns: %s / %s)\n",
+                WiFi.localIP().toString().c_str(),
+                WiFi.dnsIP(0).toString().c_str(),
+                WiFi.dnsIP(1).toString().c_str());
+
+  // give DNS servers to AP side
+  dhcpSoftAP.dhcps_set_dns(0, WiFi.dnsIP(0));
+  dhcpSoftAP.dhcps_set_dns(1, WiFi.dnsIP(1));
+
+  WiFi.softAPConfig(  // enable AP, with android-compatible google domain
+    IPAddress(172, 217, 28, 254),
+    IPAddress(172, 217, 28, 254),
+    IPAddress(255, 255, 255, 0));
+  WiFi.softAP(STASSID "extender", STAPSK);
+  Serial.printf("AP: %s\n", WiFi.softAPIP().toString().c_str());
+
+  Serial.printf("Heap before: %d\n", ESP.getFreeHeap());
+  err_t ret = ip_napt_init(NAPT, NAPT_PORT);
+  Serial.printf("ip_napt_init(%d,%d): ret=%d (OK=%d)\n", NAPT, NAPT_PORT, (int)ret, (int)ERR_OK);
+  if (ret == ERR_OK) {
+    ret = ip_napt_enable_no(SOFTAP_IF, 1);
+    Serial.printf("ip_napt_enable_no(SOFTAP_IF): ret=%d (OK=%d)\n", (int)ret, (int)ERR_OK);
+    if (ret == ERR_OK) {
+      Serial.printf("WiFi Network '%s' with same password is now NATed behind '%s'\n", STASSID "extender", STASSID);
     }
+  }
+  Serial.printf("Heap after napt init: %d\n", ESP.getFreeHeap());
+  if (ret != ERR_OK) {
+    Serial.printf("NAPT initialization failed\n");
+  }
+
+    // // wifi config
+    // WiFi.begin(ssid, password);
+    // if (!autoConfig())
+    // {
+    //     Serial.println("Start module");
+    //      WiFi.begin(ssid, password);
+    // }
+
+    auth_giwifi();
 
     // led on
     myLed.off();
