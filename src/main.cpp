@@ -6,6 +6,7 @@
 #include <TaskScheduler.h>
 #include <PubSubClient.h>
 #include <asyncHTTPrequest.h>
+#include <ESPAsyncWebServer.h>
 
 // customized headers
 #include "config.h"
@@ -19,7 +20,7 @@
 
 #ifndef STASSID
 #define STASSID "e-LyLg"
-#define STAPSK  ""
+#define STAPSK ""
 #endif
 
 #include <ESP8266WiFi.h>
@@ -50,7 +51,7 @@
 const char *ssid = "e-LyLg";
 const char *password = "";
 
-String token = "bd909515be366a0d5cace96e49eb4007938c190a";
+String token = "d9d329a8c8503855e8b865e19bdfc9b3fc701254";
 
 // // is socket ?
 // #define CONFIG_SOCKET
@@ -68,8 +69,10 @@ String action_name = "socket"; //socket
 // String action_name = "socket";
 // #endif
 
-Led myLed;     //Reverse
-Led light(12); //Reverse
+AsyncWebServer server(80);
+
+Led myLed;              //Reverse
+Led light(LED_BUILTIN); //Reverse
 
 // hw set
 String deviceSN = getChipId(); // Must be unique on the MQTT network
@@ -83,8 +86,13 @@ asyncHTTPrequest request;
 PubSubClient mqttclient(CONFIG_MQTT_HOST, CONFIG_MQTT_PORT, &mqtt_callback, client);
 
 Task job_task(0, TASK_FOREVER, &job_callback);
-Task auth_task(3  * TASK_MINUTE, TASK_FOREVER, &auth_giwifi);
+Task auth_task(3 * TASK_MINUTE, TASK_FOREVER, &auth_giwifi);
 Scheduler runner;
+
+void notFound(AsyncWebServerRequest *request)
+{
+    request->send(404, "text/plain", "Not found");
+}
 
 void job_callback()
 {
@@ -134,9 +142,9 @@ void send_status(unsigned int msg_id, String cmd)
     }
 
     String gateway = WiFi.gatewayIP().toString();
-    String ssid =  WiFi.SSID().c_str();
+    String ssid = WiFi.SSID().c_str();
 
-    msg["wifi"]["ssid"] = ssid; 
+    msg["wifi"]["ssid"] = ssid;
     msg["wifi"]["gateway"] = gateway;
     //msg["wifi"]["token"] = token.c_str();
     msg["sn"] = deviceSN;
@@ -172,45 +180,45 @@ void send_feedback(unsigned int msg_id, String cmd)
 
 void auth_giwifi()
 {
-//   HTTPClient http;
+    //   HTTPClient http;
 
-  String gateway = WiFi.gatewayIP().toString();
+    String gateway = WiFi.gatewayIP().toString();
 
-  String url = "http://" + gateway;
-  url = url + ":8060";
-  url = url + "/wifidog/auth?token=";
-  url = url + token;
-  url = url + "&info=";
-  Serial.println(url);
-//   // Your IP address with path or Domain name with URL path
-//   http.begin(client,url);
+    String url = "http://" + gateway;
+    url = url + ":8060";
+    url = url + "/wifidog/auth?token=";
+    url = url + token;
+    url = url + "&info=";
+    Serial.println(url);
+    //   // Your IP address with path or Domain name with URL path
+    //   http.begin(client,url);
 
-//   // Send HTTP POST request
-//   int httpResponseCode = http.GET();
+    //   // Send HTTP POST request
+    //   int httpResponseCode = http.GET();
 
-//   if (httpResponseCode > 0)
-//   {
-//     Serial.print("HTTP Response code: ");
-//     Serial.println(httpResponseCode);
-//     // payload = http.getString();
-//     // Serial.print(payload);
-//   }
-//   else
-//   {
-//     Serial.print("Error code: ");
-//     Serial.println(httpResponseCode);
-//   }
+    //   if (httpResponseCode > 0)
+    //   {
+    //     Serial.print("HTTP Response code: ");
+    //     Serial.println(httpResponseCode);
+    //     // payload = http.getString();
+    //     // Serial.print(payload);
+    //   }
+    //   else
+    //   {
+    //     Serial.print("Error code: ");
+    //     Serial.println(httpResponseCode);
+    //   }
 
-//   // Free resources
-//   http.end();
-    if(request.readyState() == 0 || request.readyState() == 4){
+    //   // Free resources
+    //   http.end();
+    if (request.readyState() == 0 || request.readyState() == 4)
+    {
         request.open("GET", url.c_str());
         request.send();
     }
     Serial.println(request.responseHTTPcode());
-  return;
+    return;
 }
-
 
 // void ota_update()
 // {
@@ -295,7 +303,8 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length)
         }
         ESP.reset();
     }
-    else{
+    else
+    {
         send_feedback(msg_id, "unknown");
     }
 }
@@ -370,53 +379,97 @@ void setup()
 
     randomSeed(analogRead(0));
 
+    //   Serial.begin(115200);
+    Serial.printf("\n\nNAPT Range extender\n");
+    Serial.printf("Heap on start: %d\n", ESP.getFreeHeap());
 
-//   Serial.begin(115200);
-  Serial.printf("\n\nNAPT Range extender\n");
-  Serial.printf("Heap on start: %d\n", ESP.getFreeHeap());
+    // #if HAVE_NETDUMP
+    //   phy_capture = dump;
+    // #endif
 
-
-// #if HAVE_NETDUMP
-//   phy_capture = dump;
-// #endif
-
-  // first, connect to STA so we can get a proper local DNS server
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(STASSID, STAPSK);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print('.');
-    delay(500);
-  }
-  Serial.printf("\nSTA: %s (dns: %s / %s)\n",
-                WiFi.localIP().toString().c_str(),
-                WiFi.dnsIP(0).toString().c_str(),
-                WiFi.dnsIP(1).toString().c_str());
-
-  // give DNS servers to AP side
-  dhcpSoftAP.dhcps_set_dns(0, WiFi.dnsIP(0));
-  dhcpSoftAP.dhcps_set_dns(1, WiFi.dnsIP(1));
-
-  WiFi.softAPConfig(  // enable AP, with android-compatible google domain
-    IPAddress(192,168, 9, 1),
-    IPAddress(192, 168, 9, 1),
-    IPAddress(255, 255, 255, 0));
-  WiFi.softAP("ICEPIE-IOT-"+deviceSN, STAPSK);
-  Serial.printf("AP: %s\n", WiFi.softAPIP().toString().c_str());
-
-  Serial.printf("Heap before: %d\n", ESP.getFreeHeap());
-  err_t ret = ip_napt_init(NAPT, NAPT_PORT);
-  Serial.printf("ip_napt_init(%d,%d): ret=%d (OK=%d)\n", NAPT, NAPT_PORT, (int)ret, (int)ERR_OK);
-  if (ret == ERR_OK) {
-    ret = ip_napt_enable_no(SOFTAP_IF, 1);
-    Serial.printf("ip_napt_enable_no(SOFTAP_IF): ret=%d (OK=%d)\n", (int)ret, (int)ERR_OK);
-    if (ret == ERR_OK) {
-      Serial.printf("WiFi Network '%s' with same password is now NATed behind '%s'\n", STASSID "extender", STASSID);
+    // first, connect to STA so we can get a proper local DNS server
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(STASSID, STAPSK);
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        Serial.print('.');
+        delay(500);
     }
-  }
-  Serial.printf("Heap after napt init: %d\n", ESP.getFreeHeap());
-  if (ret != ERR_OK) {
-    Serial.printf("NAPT initialization failed\n");
-  }
+    Serial.printf("\nSTA: %s (dns: %s / %s)\n",
+                  WiFi.localIP().toString().c_str(),
+                  WiFi.dnsIP(0).toString().c_str(),
+                  WiFi.dnsIP(1).toString().c_str());
+
+    // give DNS servers to AP side
+    dhcpSoftAP.dhcps_set_dns(0, WiFi.dnsIP(0));
+    dhcpSoftAP.dhcps_set_dns(1, WiFi.dnsIP(1));
+
+    WiFi.softAPConfig( // enable AP, with android-compatible google domain
+        IPAddress(192, 168, 9, 1),
+        IPAddress(192, 168, 9, 1),
+        IPAddress(255, 255, 255, 0));
+    WiFi.softAP("ICEPIE-IOT-" + deviceSN, STAPSK);
+    Serial.printf("AP: %s\n", WiFi.softAPIP().toString().c_str());
+
+    Serial.printf("Heap before: %d\n", ESP.getFreeHeap());
+    err_t ret = ip_napt_init(NAPT, NAPT_PORT);
+    Serial.printf("ip_napt_init(%d,%d): ret=%d (OK=%d)\n", NAPT, NAPT_PORT, (int)ret, (int)ERR_OK);
+    if (ret == ERR_OK)
+    {
+        ret = ip_napt_enable_no(SOFTAP_IF, 1);
+        Serial.printf("ip_napt_enable_no(SOFTAP_IF): ret=%d (OK=%d)\n", (int)ret, (int)ERR_OK);
+        if (ret == ERR_OK)
+        {
+            Serial.printf("WiFi Network '%s' with same password is now NATed behind '%s'\n", STASSID "extender", STASSID);
+        }
+    }
+    Serial.printf("Heap after napt init: %d\n", ESP.getFreeHeap());
+    if (ret != ERR_OK)
+    {
+        Serial.printf("NAPT initialization failed\n");
+    }
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", String(WiFi.softAPgetStationNum()));
+    });
+
+    // Send a GET request to <IP>/get?message=<message>
+    server.on("/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String json = "[";
+        int n = WiFi.scanComplete();
+        if (n == -2)
+        {
+            WiFi.scanNetworks(true);
+        }
+        else if (n)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                if (i)
+                    json += ",";
+                json += "{";
+                json += "\"rssi\":" + String(WiFi.RSSI(i));
+                json += ",\"ssid\":\"" + WiFi.SSID(i) + "\"";
+                json += ",\"bssid\":\"" + WiFi.BSSIDstr(i) + "\"";
+                json += ",\"channel\":" + String(WiFi.channel(i));
+                json += ",\"secure\":" + String(WiFi.encryptionType(i));
+                json += ",\"hidden\":" + String(WiFi.isHidden(i) ? "true" : "false");
+                json += "}";
+            }
+            WiFi.scanDelete();
+            if (WiFi.scanComplete() == -2)
+            {
+                WiFi.scanNetworks(true);
+            }
+        }
+        json += "]";
+        request->send(200, "application/json", json);
+        json = String();
+    });
+
+    server.onNotFound(notFound);
+
+    server.begin();
 
     // // wifi config
     // WiFi.begin(ssid, password);
